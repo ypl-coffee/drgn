@@ -18,6 +18,7 @@ from drgn.helpers.linux.list_nulls import hlist_nulls_for_each_entry
 
 __all__ = (
     "netdev_get_by_index",
+    "netdev_get_by_name",
     "sk_fullsock",
     "sk_nulls_for_each",
 )
@@ -49,6 +50,27 @@ def netdev_get_by_index(
     for netdev in hlist_for_each_entry("struct net_device", head, "index_hlist"):
         if netdev.ifindex == ifindex:
             return netdev
+
+    return NULL(prog_or_net.prog_, "struct net_device *")
+
+
+def netdev_get_by_name(prog_or_net: Union[Program, Object], name: str) -> Object:
+    """
+    Get the network device with the given interface name.
+
+    :param prog_or_net: ``struct net *`` containing the device, or
+        :class:`Program` to use the initial network namespace.
+    :param name: Network interface name.
+    :return: ``struct net_device *`` (``NULL`` if not found)
+    """
+    if isinstance(prog_or_net, Program):
+        prog_or_net = prog_or_net["init_net"]
+
+    for i in range(_NETDEV_HASHENTRIES):
+        head = prog_or_net.dev_name_head[i]
+        for name_node in hlist_for_each_entry("struct netdev_name_node", head, "hlist"):
+            if name_node.name.string_().decode() == name:
+                return name_node.dev
 
     return NULL(prog_or_net.prog_, "struct net_device *")
 
