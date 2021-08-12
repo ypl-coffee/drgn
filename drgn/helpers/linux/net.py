@@ -54,7 +54,9 @@ def netdev_get_by_index(
     return NULL(prog_or_net.prog_, "struct net_device *")
 
 
-def netdev_get_by_name(prog_or_net: Union[Program, Object], name: str) -> Object:
+def netdev_get_by_name(
+    prog_or_net: Union[Program, Object], name: Union[str, bytes]
+) -> Object:
     """
     Get the network device with the given interface name.
 
@@ -65,12 +67,23 @@ def netdev_get_by_name(prog_or_net: Union[Program, Object], name: str) -> Object
     """
     if isinstance(prog_or_net, Program):
         prog_or_net = prog_or_net["init_net"]
+    if isinstance(name, str):
+        name = name.encode()
+
+    try:
+        entry_type = prog_or_net.prog_.type("struct netdev_name_node")
+        is_name_node = True
+        member = "hlist"
+    except LookupError:
+        entry_type = prog_or_net.prog_.type("struct net_device")
+        is_name_node = False
+        member = "name_hlist"
 
     for i in range(_NETDEV_HASHENTRIES):
         head = prog_or_net.dev_name_head[i]
-        for name_node in hlist_for_each_entry("struct netdev_name_node", head, "hlist"):
-            if name_node.name.string_().decode() == name:
-                return name_node.dev
+        for entry in hlist_for_each_entry(entry_type, head, member):
+            if entry.name.string_() == name:
+                return entry.dev if is_name_node else entry
 
     return NULL(prog_or_net.prog_, "struct net_device *")
 
