@@ -1615,6 +1615,7 @@ static struct drgn_error *relocate_elf_section(Elf_Scn *scn, Elf_Scn *reloc_scn,
 static struct drgn_error *relocate_elf_file(Elf *elf)
 {
 	struct drgn_error *err;
+	bool hack = true;
 
 	GElf_Ehdr ehdr_mem, *ehdr;
 	ehdr = gelf_getehdr(elf, &ehdr_mem);
@@ -1628,7 +1629,7 @@ static struct drgn_error *relocate_elf_file(Elf *elf)
 
 	struct drgn_platform platform;
 	drgn_platform_from_elf(ehdr, &platform);
-	if (!platform.arch->apply_elf_rela) {
+	if (!platform.arch->apply_elf_rela || hack) {
 		/* Unsupported; fall back to libdwfl. */
 		return NULL;
 	}
