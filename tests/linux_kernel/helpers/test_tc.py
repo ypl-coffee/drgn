@@ -11,6 +11,7 @@ from drgn.helpers.linux.fs import path_lookup
 from drgn.helpers.linux.net import get_net_ns_by_inode, netdev_get_by_name
 from drgn.helpers.linux.tc import (
     for_each_tcf_chain,
+    for_each_tcf_proto,
     get_tcf_chain_by_index,
     qdisc_lookup,
 )
@@ -129,7 +130,7 @@ class TestTc(LinuxKernelTestCase):
         self.assertEqual(qdisc_lookup(self.netdev, 0x30).ops.id.string_(), b"sfq")
         self.assertEqual(qdisc_lookup(self.netdev, 0xFFFF).ops.id.string_(), b"ingress")
 
-    def _add_u32_filter(self, chain: int):
+    def _add_u32_filter(self, chain: int, prio: int):
         flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL
 
         msg = _tcmsg()
@@ -139,6 +140,7 @@ class TestTc(LinuxKernelTestCase):
         u32 = plugins["u32"]
         kwarg = dict(
             protocol=protocols.ETH_P_ALL,
+            prio=prio,
             target=0x10020,
             keys=["0x0/0x0+0"],
             action="ok",
@@ -152,6 +154,19 @@ class TestTc(LinuxKernelTestCase):
             msg["attrs"].append(["TCA_CHAIN", chain])
 
         return tuple(self.ns.nlm_request(msg, msg_type=RTM_NEWTFILTER, msg_flags=flags))
+
+    def _test_for_each_tcf_proto(self, chain: Object):
+        self._add_u32_filter(0, 20)
+        self._add_u32_filter(0, 30)
+        self._add_u32_filter(0, 40)
+
+        prefs = [10, 20, 30, 40]
+        filters = list(for_each_tcf_proto(chain))
+        self.assertEqual(len(filters), len(prefs))
+
+        for filter, prio in zip(filters, prefs):
+            self.assertEqual(filter.ops.kind.string_(), b"u32")
+            self.assertEqual(filter.prio, prio << 16)
 
     def test_iterate_and_get_tcf_chain(self):
         # tc qdisc add dev dummy0 root handle 1: htb
@@ -172,7 +187,7 @@ class TestTc(LinuxKernelTestCase):
             self.skipTest("struct tcf_block does not exist")
         # add chain 0
         try:
-            self._add_u32_filter(0)
+            self._add_u32_filter(0, 10)
         except NetlinkError:
             self.skipTest("kernel does not support u32 filter (CONFIG_NET_CLS_U32)")
         # check if kernel supports multichain
@@ -187,10 +202,12 @@ class TestTc(LinuxKernelTestCase):
             chain = chains[0]
             self.assertEqual(chain.filter_chain.ops.kind.string_(), b"u32")
             self.assertEqual(chain.index, 0)
+
+            self._test_for_each_tcf_proto(chain)
             return
         # add chain 1 and 2
-        self._add_u32_filter(1)
-        self._add_u32_filter(2)
+        self._add_u32_filter(1, 10)
+        self._add_u32_filter(2, 10)
 
         indices = [0, 1, 2]
         chains = list(for_each_tcf_chain(block))
@@ -205,6 +222,7 @@ class TestTc(LinuxKernelTestCase):
             self.assertEqual(chain.filter_chain.ops.kind.string_(), b"u32")
             self.assertEqual(chain.index, index)
 
+        self._test_for_each_tcf_proto(get_tcf_chain_by_index(block, 0))
 
 class _tcmsg(nlmsg):
     prefix = "TCA_"
