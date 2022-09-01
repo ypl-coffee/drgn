@@ -17,6 +17,7 @@ from drgn.helpers.linux.list import hlist_for_each_entry, list_for_each_entry
 
 __all__ = (
     "for_each_tcf_chain",
+    "get_tcf_chain_by_index",
     "qdisc_lookup",
 )
 
@@ -44,6 +45,29 @@ def for_each_tcf_chain(block: Object) -> Iterator[Object]:
 
     for chain in list_for_each_entry("struct tcf_chain", chain_list, "list"):
         yield chain
+
+
+def get_tcf_chain_by_index(block: Object, index: IntegerLike) -> Object:
+    """
+    Get the TC filter chain with the given index number from a block.
+
+    This is only supported since Linux kernel commit 5bc1701881e3 ("net: sched:
+    introduce multichain support for filters") (in v4.13).
+
+    :param block: ``struct tcf_block *``
+    :param index: TC filter chain index number
+    :return: Iterator of ``struct tcf_chain *`` objects.
+    """
+    index = operator.index(index)
+
+    for chain in for_each_tcf_chain(block):
+        # Before Linux kernel commit 5bc1701881e3 ("net: sched: introduce
+        # multichain support for filters") (in v4.13), struct tcf_chain::index
+        # didn't exist.
+        if chain.index == index:
+            return chain
+
+    return NULL(block.prog_, "struct tcf_chain *")
 
 
 def qdisc_lookup(dev: Object, major: IntegerLike) -> Object:

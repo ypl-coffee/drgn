@@ -9,7 +9,11 @@ import unittest
 from drgn import Object
 from drgn.helpers.linux.fs import path_lookup
 from drgn.helpers.linux.net import get_net_ns_by_inode, netdev_get_by_name
-from drgn.helpers.linux.tc import for_each_tcf_chain, qdisc_lookup
+from drgn.helpers.linux.tc import (
+    for_each_tcf_chain,
+    get_tcf_chain_by_index,
+    qdisc_lookup,
+)
 from tests.linux_kernel import LinuxKernelTestCase
 
 try:
@@ -149,7 +153,7 @@ class TestTc(LinuxKernelTestCase):
 
         return tuple(self.ns.nlm_request(msg, msg_type=RTM_NEWTFILTER, msg_flags=flags))
 
-    def test_for_each_tcf_chain(self):
+    def test_iterate_and_get_tcf_chain(self):
         # tc qdisc add dev dummy0 root handle 1: htb
         try:
             self.ns.tc("add", kind="htb", index=self.index, handle="1:")
@@ -193,6 +197,11 @@ class TestTc(LinuxKernelTestCase):
         self.assertEqual(len(chains), len(indices))
 
         for index, chain in zip(indices, chains):
+            self.assertEqual(chain.filter_chain.ops.kind.string_(), b"u32")
+            self.assertEqual(chain.index, index)
+
+        for index in indices:
+            chain = get_tcf_chain_by_index(block, index)
             self.assertEqual(chain.filter_chain.ops.kind.string_(), b"u32")
             self.assertEqual(chain.index, index)
 
