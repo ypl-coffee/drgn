@@ -13,6 +13,7 @@ from drgn.helpers.linux.tc import (
     for_each_tcf_chain,
     for_each_tcf_proto,
     get_tcf_chain_by_index,
+    get_tcf_proto_by_prio,
     qdisc_lookup,
 )
 from tests.linux_kernel import LinuxKernelTestCase
@@ -155,7 +156,7 @@ class TestTc(LinuxKernelTestCase):
 
         return tuple(self.ns.nlm_request(msg, msg_type=RTM_NEWTFILTER, msg_flags=flags))
 
-    def _test_for_each_tcf_proto(self, chain: Object):
+    def _test_iterate_and_get_tcf_proto(self, chain: Object):
         self._add_u32_filter(0, 20)
         self._add_u32_filter(0, 30)
         self._add_u32_filter(0, 40)
@@ -165,6 +166,11 @@ class TestTc(LinuxKernelTestCase):
         self.assertEqual(len(filters), len(prefs))
 
         for filter, prio in zip(filters, prefs):
+            self.assertEqual(filter.ops.kind.string_(), b"u32")
+            self.assertEqual(filter.prio, prio << 16)
+
+        for prio in prefs:
+            filter = get_tcf_proto_by_prio(chain, prio)
             self.assertEqual(filter.ops.kind.string_(), b"u32")
             self.assertEqual(filter.prio, prio << 16)
 
@@ -203,7 +209,7 @@ class TestTc(LinuxKernelTestCase):
             self.assertEqual(chain.filter_chain.ops.kind.string_(), b"u32")
             self.assertEqual(chain.index, 0)
 
-            self._test_for_each_tcf_proto(chain)
+            self._test_iterate_and_get_tcf_proto(chain)
             return
         # add chain 1 and 2
         self._add_u32_filter(1, 10)
@@ -222,7 +228,7 @@ class TestTc(LinuxKernelTestCase):
             self.assertEqual(chain.filter_chain.ops.kind.string_(), b"u32")
             self.assertEqual(chain.index, index)
 
-        self._test_for_each_tcf_proto(get_tcf_chain_by_index(block, 0))
+        self._test_iterate_and_get_tcf_proto(get_tcf_chain_by_index(block, 0))
 
 class _tcmsg(nlmsg):
     prefix = "TCA_"
